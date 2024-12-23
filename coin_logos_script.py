@@ -89,5 +89,5 @@ def scrape_coins(base_url, start_page, end_page):
 if __name__ == "__main__":
     base_url = "https://www.coingecko.com/?page="
     start_page = 1
-    end_page = 2  # You can change this as needed for more pages
+    end_page = 20  # You can change this as needed for more pages
     scrape_coins(base_url, start_page, end_page)
