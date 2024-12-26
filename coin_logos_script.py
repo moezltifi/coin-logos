@@ -41,7 +41,7 @@ def extract_coin_info(driver, url):
 
     for coin in coin_elements:
         try:
-            name = coin.find_element(By.CLASS_NAME, 'tw-text-gray-700').text.strip().split('\n')[0]
+            name = coin.find_element(By.CSS_SELECTOR, '.tw-text-gray-700.dark\\:tw-text-moon-100.tw-font-semibold.tw-text-sm.tw-leading-5').text.strip().split('\n')[0]
             symbol = coin.find_element(By.CLASS_NAME, 'tw-block').text.strip()
             logo_link = coin.find_element(By.TAG_NAME, 'img').get_attribute('src').strip()
             if name and symbol and logo_link:
@@ -60,16 +60,17 @@ def save_to_json(data, file_name):
             try:
                 current_data = json.load(json_file)
             except json.JSONDecodeError:
-                current_data = []
-            current_data.extend(data)
-            json_file.seek(0)  
+                current_data = {}
+            for coin in data:
+                current_data[coin['symbol']] = coin
+
+            json_file.seek(0)
             json.dump(current_data, json_file, ensure_ascii=False, indent=4)
     else:
         with open(file_name, 'w', encoding='utf-8') as json_file:
-            json.dump(data, json_file, ensure_ascii=False, indent=4)
+            json.dump({coin['symbol']: coin for coin in data}, json_file, ensure_ascii=False, indent=4)
 
 def scrape_page_links(base_url, start_page, end_page):
-
     return [f"{base_url}{page}" for page in range(start_page, end_page + 1)]
 
 def scrape_coins(base_url, start_page, end_page):
@@ -88,6 +89,6 @@ def scrape_coins(base_url, start_page, end_page):
 
 if __name__ == "__main__":
     base_url = "https://www.coingecko.com/?page="
-    start_page = 1
+    start_page = 5
     end_page = 20  # You can change this as needed for more pages
     scrape_coins(base_url, start_page, end_page)
