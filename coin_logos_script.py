@@ -38,7 +38,7 @@ def extract_coin_info(driver, url):
             symbol = coin.find_element(By.CLASS_NAME, 'tw-block').text.strip()
             logo_link = coin.find_element(By.TAG_NAME, 'img').get_attribute('src').strip()
              # Validate data
-            if name and symbol and logo_link and logo_link.startswith("https://"):
+            if name and symbol and logo_link and logo_link.startswith("https://") and "blank.png" not in logo_link:
                 coins[symbol] = {'name': name, 'logo_link': logo_link}
             else:
                 print(f"Skipped invalid entry: name={name}, symbol={symbol}, logo_link={logo_link}")
@@ -109,4 +109,4 @@ if __name__ == "__main__":
     base_url = "https://www.coingecko.com/?page="
     output_file = "coingecko_coins.txt"
     logos_folder = "logos"
-    scrape_coins(base_url, start_page=1, end_page=20, output_file=output_file, logos_folder=logos_folder)
+    scrape_coins(base_url, start_page=1, end_page=30, output_file=output_file, logos_folder=logos_folder)
