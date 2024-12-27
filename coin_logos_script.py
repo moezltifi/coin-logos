@@ -1,6 +1,7 @@
 import time
 import json
 import os
+import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -13,82 +14,96 @@ def setup_driver():
     chrome_options = Options()
     chrome_options.add_argument('--headless')  # Run in headless mode (no UI)
     chrome_options.add_argument(f'--user-agent={USER_AGENT}')
-    
-    # Set up ChromeDriver
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    
-    return driver
+    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
 def extract_coin_info(driver, url):
     driver.get(url)
     time.sleep(3)  # Wait for page to load
 
-    # Scroll down to the bottom to trigger lazy loading (loading all 100 coins)
-    last_height = driver.execute_script("return document.body.scrollHeight")
-    
-    # Scroll until we reach the end of the page (to load all coins)
+    # Scroll to the bottom to load all coins
     while True:
+        last_height = driver.execute_script("return document.body.scrollHeight")
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3)
-        
         new_height = driver.execute_script("return document.body.scrollHeight")
         if new_height == last_height:
             break
-        last_height = new_height
 
-    coins = []
+    coins = {}
     coin_elements = driver.find_elements(By.CSS_SELECTOR, 'a.tw-w-full.tw-items-center.tw-w-full')
 
     for coin in coin_elements:
         try:
-            name = coin.find_element(By.CSS_SELECTOR, '.tw-text-gray-700.dark\\:tw-text-moon-100.tw-font-semibold.tw-text-sm.tw-leading-5').text.strip().split('\n')[0]
+            name = coin.find_element(By.CSS_SELECTOR, '.tw-text-gray-700.dark\\:tw-text-moon-100.tw-font-semibold.tw-text-sm.tw-leading-5').text.split('\n')[0].strip()
             symbol = coin.find_element(By.CLASS_NAME, 'tw-block').text.strip()
             logo_link = coin.find_element(By.TAG_NAME, 'img').get_attribute('src').strip()
             if name and symbol and logo_link:
-                coins.append({
-                    'name': name,
-                    'symbol': symbol,
-                    'logo_link': logo_link
-                })
+                coins[symbol] = {'name': name, 'logo_link': logo_link}
         except Exception as e:
             print(f"Error extracting coin data: {e}") 
     return coins
 
-def save_to_json(data, file_name):
-    if os.path.exists(file_name):
-        with open(file_name, 'r+', encoding='utf-8') as json_file:
-            try:
-                current_data = json.load(json_file)
-            except json.JSONDecodeError:
-                current_data = {}
-            for coin in data:
-                current_data[coin['symbol']] = coin
+def append_to_file(data, file_name):
+    with open(file_name, 'a', encoding='utf-8') as text_file:
+        for symbol, details in data.items():
+            json_line = f'"{symbol}": {json.dumps(details, ensure_ascii=False)},\n'
+            text_file.write(json_line)
 
-            json_file.seek(0)
-            json.dump(current_data, json_file, ensure_ascii=False, indent=4)
-    else:
-        with open(file_name, 'w', encoding='utf-8') as json_file:
-            json.dump({coin['symbol']: coin for coin in data}, json_file, ensure_ascii=False, indent=4)
+def finalize_file(file_name):
+    with open(file_name, 'r+', encoding='utf-8') as text_file:
+        lines = text_file.readlines()
+        # Remove trailing comma from the last entry
+        if lines:
+            lines[-1] = lines[-1].rstrip(',\n') + '\n'
+        text_file.seek(0)
+        text_file.write('{\n')
+        text_file.writelines(lines)
+        text_file.write('}')
 
-def scrape_page_links(base_url, start_page, end_page):
-    return [f"{base_url}{page}" for page in range(start_page, end_page + 1)]
+def download_logos(file_name, logos_folder):
+    if not os.path.exists(logos_folder):
+        os.makedirs(logos_folder)
 
-def scrape_coins(base_url, start_page, end_page):
+    with open(file_name, 'r', encoding='utf-8') as text_file:
+        data = json.loads(text_file.read())
+
+    for symbol, details in data.items():
+        logo_url = details['logo_link']
+        logo_path = os.path.join(logos_folder, f"{symbol}.png")
+        try:
+            response = requests.get(logo_url, stream=True)
+            if response.status_code == 200:
+                with open(logo_path, 'wb') as logo_file:
+                    for chunk in response.iter_content(1024):
+                        logo_file.write(chunk)
+            print(f"Downloaded logo for {symbol}.")
+        except Exception as e:
+            print(f"Failed to download logo for {symbol}: {e}")
+
+def scrape_coins(base_url, start_page, end_page, output_file, logos_folder):
     driver = setup_driver()
-    page_urls = scrape_page_links(base_url, start_page, end_page)
 
-    for url in page_urls:
+    # Clear the file if it already exists
+    if os.path.exists(output_file):
+        os.remove(output_file)
+
+    for page in range(start_page, end_page + 1):
+        url = f"{base_url}{page}"
         print(f"Scraping {url}...")
         coins = extract_coin_info(driver, url)
         if coins:
-            save_to_json(coins, 'coingecko_coins.json')
-        time.sleep(3) 
-    
+            append_to_file(coins, output_file)
+        time.sleep(3)
+
     driver.quit()
-    print('Scraping completed and saved to coingecko_coins.json')
+    finalize_file(output_file)
+    print(f'Scraping completed. Data saved to {output_file}')
+
+    # Download logos
+    download_logos(output_file, logos_folder)
 
 if __name__ == "__main__":
     base_url = "https://www.coingecko.com/?page="
-    start_page = 5
-    end_page = 20  # You can change this as needed for more pages
-    scrape_coins(base_url, start_page, end_page)
+    output_file = "coingecko_coins.txt"
+    logos_folder = "logos"
+    scrape_coins(base_url, start_page=1, end_page=10, output_file=output_file, logos_folder=logos_folder)
